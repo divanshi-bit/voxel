@@ -1,0 +1,461 @@
+#include <iostream>
+#include <vector>
+#include <string>
+#include <filesystem>
+#include "repository.hpp"
+#include "FileSystem.hpp"
+#include "Hashing.hpp"
+#include "Commands.hpp"
+#include "ai.hpp"
+#include "diff_merge.hpp"
+#include "cloud.hpp"
+namespace fs = std::filesystem;
+using namespace std;
+
+
+int main(int argc, char *argv[]){
+    if (argc < 2)
+    {
+
+        cout << "\033[1;36m------ VOXEL VERSION CONTROL SYSTEM --------\033[0m\n";
+        cout << "Usage: voxel <command> [options]\n\n";
+        cout << "Available Commands:\n";
+        cout << "  init               Initialize an empty local storage database\n";
+        cout << "  commit -m \"msg\"    Save your workspace state manually\n";
+        cout << "  commit --ai        Save your workspace state with an AI summary\n";
+        cout << "  log                See your visual history tree nodes\n";
+        cout << "  status             Scan for untracked files in the workspace\n";
+        cout << "  branch <name>      Create a new branch from the current timeline\n";
+        cout << "  switch <name>      Switch to a different branch\n";
+        cout << "  where              Show the current branch name\n";
+        cout << "  track              Track all files in the workspace\n";
+        cout << "  graph              Display a visual commit graph of the repository\n";
+        cout << "  export             Export the repository graph to a PDF file\n";
+        cout << "  restore [exp]      Restore the workspace to a previous state (exp can be a commit hash, branch name, or HEAD)\n";
+        cout << "  snapshot          Create a snapshot of the current workspace state\n";
+        cout << "  snapback           Restore the workspace to the last snapshot state\n";
+        cout << "  snapclear          Clear the last snapshot state, allowing for a new snapshot to be created\n";
+        cout << "  login             Log in to the AI system for enhanced features\n";
+        cout << "  review [file] [note]  Review code with AI assistance (optional file and note)\n";
+        return 1;
+    }
+
+    string command = argv[1];
+    if (command == "init"){
+        
+        Repository::init_repository();
+    }
+    else if (command == "status")
+    { // 2. Add a status option to test file printing
+        std::cout << "\033[1;35m--- Scanning Untracked Workspace Files ---\033[0m\n";
+
+        std::vector<std::string> files = FileSystem::list_workspace_files();
+        std::unordered_map<std::string, std::string> index_map = FileSystem::read_index();
+
+        if (files.empty())
+        {
+            std::cout << "Workspace is completely empty (or contains no trackable files).\n";
+        }
+        else
+        {
+            for (const auto &file : files)
+            {
+                std::string content = FileSystem::read_file_to_string(file);
+                std::string file_hash = Hashing::generate_sha256(content);
+                if (index_map.find(file) == index_map.end())
+                {
+                    // File is not tracked at all
+                    std::cout << "  \033[1;31m[Untracked]\033[0m " << file << "\n";
+                }
+                else if (index_map[file] != file_hash)
+                {
+                    // File is tracked, but the code content has changed!
+                    std::cout << "  \033[1;33m[Modified]\033[0m  " << file << "\n";
+                }
+                else
+                {
+                    // File is tracked and matches the staging area database perfectly
+                    std::cout << "  \033[1;32m[Tracked]\033[0m    " << file << "\n";
+                }
+
+                std::cout << "    Hash: " << file_hash << "\n";
+            }
+        }
+    }
+    else if (command == "commit"){
+        std::string message;
+
+        if (argc == 2)
+        {
+            std::cout << "\033[1;36m┌───[ Voxel Commit Message Prompt ]───┐\033[0m\n";
+            std::cout << "│ Enter commit message: ";
+
+            getline(std::cin, message);
+            cout << "\033[1;36m+-------------------------------------+\033[0m\n";
+
+            if (message.empty())
+            {
+                std::cerr << "\033[31mError: Commit aborted due to empty message.\033[0m\n";
+                return 1;
+            }
+        }
+
+        else if (argc == 3){
+            if (string(argv[2]) == "ai") {
+                ai::commit_with_ai();
+                return 0;
+            }
+            message = argv[2];
+        }
+        else{
+            cerr << "\033[31mError: Invalid commit command usage. Use 'voxel commit -m \"message\"' or 'voxel commit ai'.\033[0m\n";
+        }
+
+        Commands::commit_changes(message);
+        Commands::clear_snapshot_silent();
+    }
+    else if (command == "where")
+    {
+        string current_branch = Commands::get_current_branch_name();
+        cout << "\033[1;36mCurrent Branch: " << current_branch << "\033[0m\n";
+    }
+    else if (command == "branch")
+    {
+        std::string branch_name;
+
+        if (argc == 2)
+        {
+            std::cout << "\033[1;36m+---[ Voxel Branch Name Prompt ]---+\033[0m\n";
+            std::cout << "| Enter Branch name: ";
+
+            std::getline(std::cin, branch_name);
+            std::cout << "\033[1;36m+----------------------------------+\033[0m\n";
+
+            if (branch_name.empty())
+            {
+                std::cerr << "\033[31mError: Branch creation aborted. Name cannot be empty.\033[0m\n";
+                return 1;
+            }
+
+            if (branch_name.find(' ') != std::string::npos)
+            {
+                std::cerr << "\033[31mError: Branch name cannot contain spaces.\033[0m\n";
+                return 1;
+            }
+        }
+        else if (argc >= 3)
+        {
+            branch_name = argv[2];
+        }
+
+        Commands::create_branch(branch_name);
+    }
+    else if (command == "switch")
+    {
+        if (argc < 3)
+        {
+            std::cerr << "\033[31mError: Missing branch name.\nUsage: voxel switch <branch_name>\033[0m\n";
+            return 1;
+        }
+        std::string target_branch = argv[2];
+        Commands::switch_branch(target_branch);
+    }
+    else if (command == "track")
+    {
+        Commands::track_all_files();
+    }
+    else if (command == "log")
+    {
+        Commands::display_basic_log();
+    }
+    else if (command == "graph")
+    {
+        Commands::display_graph_log();
+    }
+    else if (command == "export")
+    {
+        Commands::export_repository_pdf();
+    }
+    else if (command == "restore") {
+        std::string expression = "";
+        if (argc > 2) {
+            expression = argv[2]; // Capture options like: exp2/exp-3, head, or a hash
+        }
+        Commands::restore_workspace_state(expression);
+        Commands::clear_snapshot_silent();
+        Commands::create_snapshot();
+    }
+    else if(command == "snapshot"){
+        Commands::create_snapshot();
+    }
+    else if(command == "snapback"){
+        Commands::restore_snapshot();
+    }
+    else if(command == "snapclear"){
+        Commands::clear_snapshot_silent();
+        cout << "\033[1;32m Last Snapshot cleared successfully. You may now make another snapshot.\033[0m\n";
+    }
+    else if (command == "login") {
+        ai::init_ai();
+    }
+    else if(command == "review"){
+        vector<string> target;
+        string optional_note = "";
+
+        if (argc == 2){
+            target.push_back(FileSystem::get_current_active_file());
+        }
+        else if (argc == 3){
+            string arg2 = argv[2];
+            if (arg2 == "all") {
+                target = FileSystem::list_workspace_files();
+            }
+            else if (fs::exists(arg2)) {
+                target.push_back(arg2);
+            }
+            else {
+                target.push_back(FileSystem::get_current_active_file());
+                optional_note = arg2;
+            }
+        }
+        else if(argc == 4){
+            string arg2 = argv[2];
+            string arg3 = argv[3];
+            if (arg2 == "all") {
+                target = FileSystem::list_workspace_files();
+            }
+            else if (fs::exists(arg2)) {
+                target.push_back(arg2);
+            }
+            else {
+                std::cout << "Error: Target file '" << arg2 << "' not found.\n";
+                return 1;
+            }
+        }
+        
+        ai::execute_voxel_review(target, optional_note);
+            
+    }
+    else if (command == "diff") {
+        bool use_ai = false;
+        std::vector<std::string> clean_args;
+        for (int i = 2; i < argc; i++) {
+            std::string arg = argv[i];
+            if (arg == "-ai" || arg == "--ai") {
+                use_ai = true;
+                if(argc == 5) {
+                    clean_args.push_back(argv[3]); 
+                    clean_args.push_back(argv[4]);
+                } 
+                else if(argc == 4){
+                    clean_args.push_back(argv[3]); 
+                }
+            }
+            
+            else {
+                for (int i = 2; i < argc; i++){
+                    clean_args.push_back(argv[i]);
+                }
+            }
+        }
+        if (use_ai) {
+            diffEngine::ai_diff(clean_args);
+        } 
+        else {
+           
+            diffEngine::route_diff(clean_args);
+        }
+    }
+    else if(command == "freeze"){
+        Commands::track_all_files();
+        std::string message;
+
+        if (argc == 2)
+        {
+            std::cout << "\033[1;36m┌───[ Voxel Commit Message Prompt ]───┐\033[0m\n";
+            std::cout << "│ Enter commit message: ";
+
+            getline(std::cin, message);
+            cout << "\033[1;36m+-------------------------------------+\033[0m\n";
+
+            if (message.empty())
+            {
+                std::cerr << "\033[31mError: Freeze aborted due to empty message.\033[0m\n";
+                return 1;
+            }
+        }
+
+        else if (argc == 3){
+            if (string(argv[2]) == "ai") {
+                ai::commit_with_ai();
+                return 0;
+            }
+            message = argv[2];
+        }
+        else{
+            cerr << "\033[31mError: Invalid freeze command usage. Use 'voxel freeze -m \"message\"' or 'voxel freeze ai'.\033[0m\n";
+        }
+
+        Commands::commit_changes(message);
+        Commands::clear_snapshot_silent();
+    }
+    else if (command == "diverge") {
+        std::vector<std::string> args;
+        
+        for (int i = 2; i < argc; i++) {
+            args.push_back(argv[i]);
+        }
+        Commands::diverge(args);
+    } 
+    else if (command == "merge") {
+        std::string source_branch;
+        std::string target_branch;
+
+        // Pull out the --ai / -ai flag from anywhere in the args first, so
+        // the remaining positional args (branch names) parse exactly like
+        // before, regardless of where the flag was typed.
+        bool use_ai = false;
+        std::vector<std::string> positional;
+        for (int i = 2; i < argc; i++) {
+            std::string arg = argv[i];
+            if (arg == "--ai" || arg == "-ai") {
+                use_ai = true;
+            } else {
+                positional.push_back(arg);
+            }
+        }
+
+        if (positional.empty()) {
+            // Case 1: "voxel merge [--ai]"
+            // Default behavior: Merge 'main' into current branch
+            source_branch = "main";
+            target_branch = Commands::get_current_branch_name();
+        }
+        else if (positional.size() == 1) {
+            // Case 2: "voxel merge a [--ai]"
+            // Merge branch 'a' (source) into current branch (target)
+            source_branch = positional[0];
+            target_branch = Commands::get_current_branch_name();
+        }
+        else if (positional.size() == 2) {
+            // Case 3: "voxel merge a b [--ai]"
+            // Out-of-tree merge: Merge branch 'a' (source) into branch 'b' (target)
+            source_branch = positional[0];
+            target_branch = positional[1];
+        }
+        else {
+            std::cerr << "\033[1;31mInvalid merge syntax. Use 'voxel merge [source] [target] [--ai]'.\033[0m\n";
+            return 1;
+        }
+
+        // Safety Guard 1: Ensure we actually found a target branch
+        if (target_branch.empty()) {
+            std::cerr << "\033[1;31mError: Could not determine the target branch. Are you in a valid Voxel repository?\033[0m\n";
+            return 1;
+        }
+
+        // Safety Guard 2: Prevent merging a branch into itself
+        if (source_branch == target_branch) {
+            std::cout << "\033[1;33mAlready up to date. (Cannot merge '" << source_branch << "' into itself).\033[0m\n";
+            return 0;
+        }
+
+        
+        merge::execute(target_branch, source_branch, use_ai);
+        Commands::restore_workspace_state("");
+        Commands::clear_snapshot_silent();
+        Commands::create_snapshot();
+        return 0;
+    }
+    else if (command == "bin") {
+        std::vector<std::string> bin_args;
+        if (argc == 3) {
+            bin_args.push_back(argv[2]);
+        }
+        else{
+            std::cerr << "\033[1;31mError: Invalid bin command usage. Use 'voxel bin <commit_hash>' or 'voxel bin <branch_name>'.\033[0m\n";
+            return 1;
+        }
+        
+        Commands::bin_target(bin_args);
+        return 0;
+    }
+    else if (command == "revive") {
+        std::vector<std::string> revive_args;
+
+        if (argc >= 3) {
+            revive_args.push_back(argv[2]);
+        }
+        
+        Commands::revive_target(revive_args);
+        return 0;
+    }
+    else if (command == "who") {
+        Commands::who();
+        return 0;
+    }
+    else if (command == "pack") {
+        vector<string> pack_args;
+        for (int i = 2; i < argc; ++i) {
+            pack_args.push_back(argv[i]);
+        }
+        Cloud::pack_repository(pack_args);
+        return 0;
+    }
+    else if (command == "unpack") {
+        if (argc < 3) {
+            std::cerr << "\033[1;31mError: Please provide the payload filename (e.g., voxel unpack name.vxlpack).\033[0m\n";
+            return 1;
+        }
+        string payload_filename = argv[2];
+        Cloud::unpack_repository(payload_filename);
+        return 0;
+    }
+    else if (command == "host") {
+        vector<string> args;
+        for (int i = 2; i < argc; ++i) {
+            args.push_back(argv[i]);
+        }
+        Cloud::host_mesh(args);
+    }  
+    else if (command == "client") {
+        vector<string> args;
+        for (int i = 2; i < argc; ++i) {
+            args.push_back(argv[i]);
+        }
+        Cloud::client_mesh(args);
+    }  
+    else if (command == "meshoff") {
+        vector<string> args;
+        for (int i = 2; i < argc; ++i) {
+            args.push_back(argv[i]);
+        }
+        Cloud::mesh_off(args);
+    }
+    else if (command == "change_model") {
+        Commands::configure_model();
+    }
+    else if (command == "diff_pdf") {
+        vector<string> pdf_args;
+        for (int i = 2; i < argc; i++) {
+            pdf_args.push_back(argv[i]);
+        }
+        diffEngine::diff_pdf(pdf_args);
+    }
+    else if(command == "pull"){
+        vector<string> pull_args;
+        for (int i = 2; i < argc; i++) {
+            pull_args.push_back(argv[i]);
+        }
+        Cloud::pull_repository(pull_args);
+    
+    }
+    
+    else
+    {
+        cout << "Error: Unknown command '" << command << "'\n";
+        return 1;
+    }
+
+    return 0;
+}

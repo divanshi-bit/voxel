@@ -1,0 +1,30 @@
+# ==========================================
+# Language Artifacts (C/C++)
+# ==========================================
+*.o
+*.obj
+*.d
+.vscode/
+.voxel/
+
+# ==========================================
+# Executable Binaries (Universal)
+# ==========================================
+# Blocks Windows executables
+*.exe
+# Blocks macOS executables
+*.app
+# Blocks generic Linux/macOS binary outputs
+*.out
+.DS_Store
+
+
+# ==========================================
+# Test Folder Exceptions
+# ==========================================
+# 1. Ignore ALL files inside the tests folder by default
+test/
+.env
+
+
+

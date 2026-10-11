@@ -1,0 +1,57 @@
+#ifndef AI_HPP
+#define AI_HPP
+#include <string>
+#include <vector>
+using namespace std;
+class ai {
+public:
+    struct VoxelConfig{
+        string username = "voxel_user";
+        string email = "unknown@voxel.internal";
+        string provider = "none";
+        string model = "none";
+        string api_key = "none";
+        string is_connected = "false";
+    };
+    static bool load_config(VoxelConfig& config);
+    static bool save_config(const VoxelConfig& config);
+    static bool create_default_config();
+    static bool init_ai();
+    static void execute_voxel_review(const std::vector<std::string>& files_to_review, const std::string& optional_note);
+    static void commit_with_ai();
+    static void run_ai_diff(const std::string& filepath, const std::string& old_content, const std::string& new_content);
+    static string resolve_merge_conflict(const std::string &filepath,const std::string &base_content,const std::string &ours_content,const std::string &theirs_content,const std::string &target_branch,const std::string &source_branch);
+
+
+   class sendToAI {
+    private:
+    VoxelConfig config;
+    bool is_ready;
+    string run_gemini(const string& sys, const string& content);
+    string run_openai(const string& sys, const string& content);
+    string run_claude(const string& sys, const string& content);
+    string run_ollama(const string& sys, const string& content);
+    string run_groq(const string& sys, const string& content);
+    string run_deepseek(const string& sys, const string& content);
+    string escape_json(const string& raw_input);
+    string transmit(const string& url, const string& headers, const string& json_body);
+    string clean_json_response(const string& raw_json, const string& key_token);
+
+    public:
+    sendToAI();
+    string execute(const string& system_prompt, const string& content);
+
+
+
+    };
+
+
+
+
+
+
+
+
+
+};
+#endif
